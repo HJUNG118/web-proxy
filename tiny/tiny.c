@@ -111,7 +111,7 @@ int parse_uri(char *uri, char *filename, char *cgiargs) {
 */
 void serve_static(int fd, char *filename, int filesize) {
     int srcfd;
-    char *srcp, filetype[MAXLINE], buf[MAXBUF];
+    char *srcp, filetype[MAXLINE], buf[MAXBUF], *usrbuf;
 
     /* Send response headers to client */
     get_filetype(filename, filetype); // 파일 타입 가져오기
@@ -127,10 +127,13 @@ void serve_static(int fd, char *filename, int filesize) {
     /* filename에 해당하는 파일을 읽어 'srcfd' 파일 디스크립터를 통해 열고,
     'srcp' 포인터를 통해 메모리 매핑 수행 */
     srcfd = Open(filename, O_RDONLY, 0); 
-    srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
+    usrbuf = (char *)malloc(filesize);
+    Rio_readn(srcfd, usrbuf, filesize); // srcfd: 데이터를 읽어올 fd, usrbuf: 읽어온 데이터 저장할 버퍼, 버퍼크기
+    // srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
     Close(srcfd);
-    Rio_writen(fd, srcp, filesize); // scrp를 클라이언트에게 전송하여 파일의 내용을 응답 본문으로 전송
-    Munmap(srcp, filesize); // 매핑된 srcp를 해제
+    Rio_writen(fd, usrbuf, filesize); // scrp를 클라이언트에게 전송하여 파일의 내용을 응답 본문으로 전송
+    // Munmap(srcp, filesize); // 매핑된 srcp를 해제
+    free(usrbuf);
 }
 
 /*
@@ -145,6 +148,8 @@ void get_filetype(char *filename, char *filetype) { // 파일 확장자를 검�
         strcpy(filetype, "image/png");
     else if (strstr(filename, ".jpg"))
         strcpy(filetype, "image/jpeg");
+    else if (strstr(filename, ".mp4"))
+        strcpy(filetype, "video/mp4");
     else // 확장자가 없을 경우 planin MIME 타입을 설정
         strcpy(filetype, "text/plain");
 }
