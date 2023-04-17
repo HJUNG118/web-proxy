@@ -27,7 +27,7 @@ void doit(int fd) {
   rio_t rio;
   
   /* Read request line and headers */
-  Rio_readinitb(&rio, fd); // rio 구조체 초기화
+  Rio_readinitb(&rio, fd); // 동기화
   Rio_readlineb(&rio, buf, MAXLINE); // 요청 라인과 헤더를 buf에 읽어들이기
   printf("Request headers:\n");
   printf("%s", buf);
@@ -130,7 +130,7 @@ void serve_static(int fd, char *filename, int filesize) {
     usrbuf = (char *)malloc(filesize);
     Rio_readn(srcfd, usrbuf, filesize); // srcfd: 데이터를 읽어올 fd, usrbuf: 읽어온 데이터 저장할 버퍼, 버퍼크기
     // srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
-    Close(srcfd);
+    Close(srcfd);// 프록시 삽입
     Rio_writen(fd, usrbuf, filesize); // scrp를 클라이언트에게 전송하여 파일의 내용을 응답 본문으로 전송
     // Munmap(srcp, filesize); // 매핑된 srcp를 해제
     free(usrbuf);
@@ -215,7 +215,8 @@ int main(int argc, char **argv) {
   while (1) {
     clientlen = sizeof(clientaddr);
     connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);  // 클라이언트와의 연결을 수락, 클라이언트의 주소 정보를 가져온다.
-    Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0); // 클라이언트 주소를 호스트 이름과 포트로 변환하여 유효성 검사
+    printf("%d", connfd);
+    Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0); // 클라이언트 주소를 호스트 이름과 포트로 변환
     printf("Accepted connection from (%s, %s)\n", hostname, port);
     doit(connfd);   // 클라이언트와의 통신 처리
     Close(connfd);  // 연결 종료
