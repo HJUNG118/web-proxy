@@ -15,6 +15,7 @@ void serve_static(int fd, char *filename, int filesize);
 void get_filetype(char *filename, char *filetype);
 void serve_dynamic(int fd, char *filename, char *cgiargs);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg);
+void *thread(void *vargp);
 
 /*
 클라이언트와의 통신 처리 함수
@@ -197,13 +198,24 @@ void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longms
   Rio_writen(fd, body, strlen(body));
 }
 
+void *thread(void *vargp)
+{
+    int connfd = *((int *)vargp);
+    Pthread_detach(pthread_self()); // pthread_self()통해서 ID결정
+    Free(vargp);
+    doit(connfd);
+    Close(connfd);
+    return NULL;
+}
+
 int main(int argc, char **argv) {
   // listenfd: 서버 소켓 파일 디스크립터로 클라이언트의 연결 요청을 받아들이는 역할
   // connfd: 클라이언트 소켓 파일 디스크립터로, 클라이언트와의 통신을 위해 사용
-  int listenfd, connfd; 
+  int listenfd, *connfdp; 
   char hostname[MAXLINE], port[MAXLINE];
   socklen_t clientlen; // 클라이언트 주소 길이 저장하는 변수, 클라이언트 주소 정보를 가져오는데 사용
   struct sockaddr_storage clientaddr; // 클라이언트 주소 정보 저장하는 구조체, 클라이언트와 연결을 허용하는데 사용
+  pthread_t tid;
 
   /* Check command line args */
   if (argc != 2) { // 프로그램의 실행 파일명을 포함하여 인수가 2개가 아닌 경우
@@ -214,12 +226,10 @@ int main(int argc, char **argv) {
   listenfd = Open_listenfd(argv[1]); // 지정된 포트에서 서버 소켓을 열고, 클라이언트의 요청을 기다린다.
   while (1) {
     clientlen = sizeof(clientaddr);
-    connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);  // 클라이언트와의 연결을 수락, 클라이언트의 주소 정보를 가져온다.
-    printf("%d", connfd);
-    Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0); // 클라이언트 주소를 호스트 이름과 포트로 변환
-    printf("Accepted connection from (%s, %s)\n", hostname, port);
-    doit(connfd);   // 클라이언트와의 통신 처리
-    Close(connfd);  // 연결 종료
+    connfdp = malloc(sizeof(int));
+    *connfdp = Accept(listenfd, (SA *)&clientaddr, &clientlen);  // 클라이언트와의 연결을 수락, 클라이언트의 주소 정보를 가져온다.
+    Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0);
+    Pthread_create(&tid, NULL, thread, connfdp); // connfdp와 연결된 클라이언트 전용 스레드 생성
     // main함수 전체를 무한 반복하여 클라이언트의 연결 요청을 처리한다.
   }
 }
