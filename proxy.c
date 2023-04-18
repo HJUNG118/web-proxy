@@ -13,7 +13,7 @@ void doit(int fd);
 int parse_uri(char *uri, char *host, char *port, char *path);
 void modify_HTTP_header(char *method, char *host, char *port, char *path, int server_fd);
 void *thread(void *vargp);
-
+void *cache(char *path);
 /*
 클라이언트와 통신 처리
 */
@@ -35,17 +35,34 @@ void doit(int fd) {
         return;
   } 
   parse_uri(uri, host, port, path); // 서버의 host, port, path 추출
+  // cache 함수에 들어가서 요청한 정보가 캐시에 있는지 확인한다.
   server_fd = Open_clientfd(host, port); // proxy와 메인서버 소켓의 파일 디스크립터 생성
+
+  cache(path); // 캐시에 요청한 객체가 있는지 확인한다.
 
   Rio_readinitb(&server_rio, server_fd);
   modify_HTTP_header(method, host, port, path, server_fd); // 메인 서버로 보낼 헤더 생성 및 전송
   ssize_t n;
   while ((n = Rio_readlineb(&server_rio, server_buf, MAXLINE)) > 0) // 서버로부터 전송된 데이터 읽기
   {
+      // 캐시 버퍼에 서버가 보낸 값을 쓴다.
+
       Rio_writen(fd, server_buf, n); // 실제 읽은 바이트 수(데이터 길이)만큼만 쓰도록 수정
       // 클라이언트로 다시 데이터 전송
   }
   Close(server_fd);
+}
+
+/*
+웹 서버로부터 받은 객체를 캐시에 저장
+*/
+void *cache(char *path)
+{
+  /*
+  1. 캐시에 공간이 있고, 객체의 크기가 MAX를 넘지 않는다면 객체를 캐시에 탑재
+  2. 캐시에 공간(MAX_CACHE_SIZE)이 없다면, 캐시 폐기
+  3. 
+  */
 }
 
 /*
