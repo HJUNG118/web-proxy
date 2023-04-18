@@ -12,6 +12,7 @@ static const char *user_agent_hdr =
 void doit(int fd);
 int parse_uri(char *uri, char *host, char *port, char *path);
 void modify_HTTP_header(char *method, char *host, char *port, char *path, int server_fd);
+void *thread(void *vargp);
 
 /*
 클라이언트와 통신 처리
@@ -88,14 +89,24 @@ int parse_uri(char *uri, char *host, char *port, char *path) {
     return;
 }
 
+void *thread(void *vargp)
+{
+  int connfd = *((int *)vargp);
+  Pthread_detach(Pthread_self());
+  Free(vargp);
+  doit(connfd);
+  Close(connfd);
+  return NULL;
+}
+
 /*
 클라이언트로부터 요청 대기, 연결 후 통신 처리
 */
 int main(int argc, char **argv) {
   // listenfd: 서버 소켓 파일 디스크립터로 클라이언트의 연결 요청을 받아들이는 역할
   // connfd: 클라이언트 소켓 파일 디스크립터로, 클라이언트와의 통신을 위해 사용
-  int listenfd, connfd; 
-  char hostname[MAXLINE], port[MAXLINE];
+  int listenfd, *connfd; 
+  pthread_t tid;
   socklen_t clientlen; // 클라이언트 주소 길이 저장하는 변수, 클라이언트 주소 정보를 가져오는데 사용
   struct sockaddr_storage clientaddr; // 클라이언트 주소 정보 저장하는 구조체, 클라이언트와 연결을 허용하는데 사용
 
@@ -108,11 +119,9 @@ int main(int argc, char **argv) {
   listenfd = Open_listenfd(argv[1]); // 지정된 포트에서 서버 소켓을 열고, 클라이언트 요청 기다린다.
   while (1) {
     clientlen = sizeof(clientaddr);
-    connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);  // 클라이언트와의 연결 수락, 클라이언트의 주소 정보 가져온다.
-    Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0); // 클라이언트 주소를 호스트 이름과 포트로 변환
-    printf("Accepted connection from (%s, %s)\n", hostname, port);
-    doit(connfd);   // 클라이언트와의 통신 처리
-    Close(connfd);  // 연결 종료
+    connfd = malloc(sizeof(int));
+    *connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);  // 클라이언트와의 연결 수락, 클라이언트의 주소 정보 가져온다.
+    Pthread_create(&tid, NULL, thread, connfd);
     // main함수 전체를 무한 반복하여 클라이언트의 연결 요청을 처리
   }
   printf("%s", user_agent_hdr);
