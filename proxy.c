@@ -29,7 +29,7 @@ void *thread(void *vargp);
 void LRUbuffer();
 cachebuffer *find_cache(char *uri);
 void add_cache(int object_size, char *from_server_uri, char *from_server_data);
-void parse_server(char *buf, char *from_server_uri, char *from_server_data);
+
 int cachesize = 0;
 
 /*
