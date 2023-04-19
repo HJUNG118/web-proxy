@@ -8,7 +8,7 @@
 /*
 캐시 버퍼 구조체 생성
 */
-typedef struct {
+typedef struct cachebuffer{
     char path[MAXLINE]; // 웹 객체의 path
     char data[MAX_OBJECT_SIZE]; // 웹 객체 데이터
     struct cachebuffer* prev; // 이전 항목의 포인터
@@ -27,7 +27,7 @@ int parse_uri(char *uri, char *host, char *port, char *path);
 void modify_HTTP_header(char *method, char *host, char *port, char *path, int server_fd);
 void *thread(void *vargp);
 void LRUbuffer();
-void *find_cache(char *path);
+cachebuffer *find_cache(char *path);
 void add_cache(char *server_buf, int object_size, char *from_server_uri, char *from_server_data);
 void parse_server(char *buf, char *from_server_uri, char *from_server_data);
 int cachesize = 0;
@@ -53,12 +53,14 @@ void doit(int fd) {
         printf("Proxy does not implement the method\n");
         return;
   } 
+  
   parse_uri(uri, host, port, path); // 서버의 host, port, path 추출
-
+  printf("path 잘 들어오나?: %s\n", path);
   cachebuffer *buffer = find_cache(path); // 캐시에 요청한 객체가 있는지 확인한다.
+  printf("%s\n", buffer);
   if (buffer != NULL) // 캐시에 클라이언트가 요청한 객체가 있다면
   {
-    Rio_writen(fd, buffer, len(buffer)); // 해당 객체를 클라이언트에 보낸다.
+    Rio_writen(fd, buffer, strlen(buffer)); // 해당 객체를 클라이언트에 보낸다.
   }
   else // 캐시에 클라이언트가 찾는 객체가 없다면
   {
@@ -71,8 +73,8 @@ void doit(int fd) {
       sprintf(buf, "%s", buf, server_buf); // buf에 서버로부터 응답을 담는다.    
     }
     parse_server(buf, from_server_uri, from_server_data); // 서버로부터 받은 uri, 데이터 파싱
-    add_cache(buf, len(buf), from_server_uri, from_server_data); // 버퍼, 버퍼 크기, uri, data
-    Rio_writen(fd, buf, len(buf)); // 실제 읽은 바이트 수(데이터 길이)만큼 데이터 클라이언트로 전송
+    add_cache(buf, strlen(buf), from_server_uri, from_server_data); // 버퍼, 버퍼 크기, uri, data
+    Rio_writen(fd, buf, strlen(buf)); // 실제 읽은 바이트 수(데이터 길이)만큼 데이터 클라이언트로 전송
     Close(server_fd);
   }
 }
@@ -105,7 +107,7 @@ void LRUbuffer()
 /*
 클라이언트가 요청한 객체가 캐시에 있는지 확인하고 있다면 응답 데이터 반환, 요청 객체를 가장 최근 리스트로 변경
 */
-void *find_cache(char *path)
+cachebuffer *find_cache(char *path)
 {
   cachebuffer *currentitem = cachehead;
   while(currentitem != NULL)
