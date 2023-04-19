@@ -59,7 +59,7 @@ void doit(int fd) {
   cachebuffer *buffer = find_cache(path); // 캐시에 요청한 객체가 있는지 확인한다.
   if (buffer != NULL) // 캐시에 클라이언트가 요청한 객체가 있다면
   {
-    // printf("여기는??\n");
+    printf("여기는??\n");
     Rio_writen(fd, buffer, strlen(buffer)); // 해당 객체를 클라이언트에 보낸다.
   }
   else // 캐시에 클라이언트가 찾는 객체가 없다면
@@ -78,7 +78,7 @@ void doit(int fd) {
       }    
     }
     Close(server_fd);
-    // printf("buf: %s", strlen(buf));
+    // printf("buf: %s", buf);
     parse_server(buf, from_server_uri, from_server_data); // 서버로부터 받은 uri, 데이터 파싱
     add_cache(buf, strlen(buf), from_server_uri, from_server_data); // 버퍼, 버퍼 크기, uri, data
   }
@@ -101,12 +101,12 @@ void LRUbuffer()
 {
   printf("===============LRU\n");
   cachebuffer *LRUitem = cachehead; // 새로 생성한 LRUitem노드는 NULL
-  while(LRUitem != NULL)
+  while(LRUitem->next != NULL)
   {
     LRUitem = LRUitem->next;
   }
   LRUitem->prev->next = NULL;
-  int size = sizeof(LRUitem->data);
+  int size = strlen(LRUitem->data);
   free(LRUitem);
   cachesize -= size; // 캐시에서 빠져나간 객체의 크기만큼 빼준다.
 }
@@ -134,7 +134,7 @@ cachebuffer *find_cache(char *path)
         cachehead->prev = currentitem;
         cachehead = currentitem;
       }
-      printf("첫번째 객체 찾음\n");
+      printf("첫번째 객체 찾음: %d\n", currentitem->data);
       return currentitem->data;
     }
     currentitem = currentitem->next;
@@ -147,6 +147,7 @@ cachebuffer *find_cache(char *path)
 */
 void add_cache(char *server_buf, int object_size, char *from_server_uri, char *from_server_data)
 {
+  printf("cachesize: %d", cachesize);
   if (cachesize >= MAX_CACHE_SIZE) {
     LRUbuffer();
   }
@@ -154,7 +155,6 @@ void add_cache(char *server_buf, int object_size, char *from_server_uri, char *f
   cachebuffer *newitem = (cachebuffer*)malloc(sizeof(cachebuffer));
   strcpy(newitem->path, from_server_uri);
   strcpy(newitem->data, from_server_data);
-  printf("path: %s\n", newitem->path);
   newitem->prev = NULL;
   newitem->next = cachehead;
   if (cachehead != NULL) {
