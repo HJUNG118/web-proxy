@@ -2,7 +2,7 @@
 #include "csapp.h"
 
 /* Recommended max cache and object sizes */
-#define MAX_CACHE_SIZE 500
+#define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
 
 /*
@@ -27,13 +27,13 @@ int parse_uri(char *uri, char *host, char *port, char *path);
 void modify_HTTP_header(char *method, char *host, char *port, char *path, int server_fd);
 void *thread(void *vargp);
 void LRUbuffer();
-cachebuffer *find_cache(char *path);
-void add_cache(char *server_buf, int object_size, char *from_server_uri, char *from_server_data);
+cachebuffer *find_cache(char *uri);
+void add_cache(int object_size, char *from_server_uri, char *from_server_data);
 void parse_server(char *buf, char *from_server_uri, char *from_server_data);
 int cachesize = 0;
 
 /*
-클라이언트와 통신 처리
+클라이언트와 통신 처리s
 */
 void doit(int fd) {
   int server_fd;
@@ -56,11 +56,11 @@ void doit(int fd) {
   
   parse_uri(uri, host, port, path); // 서버의 host, port, path 추출
 
-  cachebuffer *buffer = find_cache(path); // 캐시에 요청한 객체가 있는지 확인한다.
+  char *buffer = find_cache(uri); // 캐시에 요청한 객체가 있는지 확인한다.
   if (buffer != NULL) // 캐시에 클라이언트가 요청한 객체가 있다면
   {
-    printf("여기는??\n");
-    Rio_writen(fd, buffer, strlen(buffer)); // 해당 객체를 클라이언트에 보낸다.
+    printf("buffer->data%s\n", buffer);
+    Rio_writen(fd, buffer, MAXLINE); // 해당 객체를 클라이언트에 보낸다.
   }
   else // 캐시에 클라이언트가 찾는 객체가 없다면
   {
@@ -77,10 +77,10 @@ void doit(int fd) {
         strcat(buf, server_buf);
       }    
     }
+    printf("cachesize: %d\n", cachesize);
     Close(server_fd);
-    // printf("buf: %s", buf);
-    parse_server(buf, from_server_uri, from_server_data); // 서버로부터 받은 uri, 데이터 파싱
-    add_cache(buf, strlen(buf), from_server_uri, from_server_data); // 버퍼, 버퍼 크기, uri, data
+    // parse_server(buf, from_server_uri, from_server_data); // 서버로부터 받은 uri, 데이터 파싱
+    add_cache(strlen(buf), uri, buf); // 버퍼, 버퍼 크기, uri, data
   }
 }
 
@@ -91,7 +91,9 @@ void parse_server(char *buf, char *from_server_uri, char *from_server_data)
 {
   char *start_url = strstr(buf, "\r\n");
   strncpy(from_server_uri, buf, start_url - buf);
-  from_server_data = start_url;
+  strcpy(from_server_data,start_url+2);
+  printf("====><><> <%s>\n",from_server_data);
+  return;
 }
 
 /*
@@ -106,24 +108,24 @@ void LRUbuffer()
     LRUitem = LRUitem->next;
   }
   LRUitem->prev->next = NULL;
-  int size = strlen(LRUitem->data);
+  // int size = strlen(LRUitem->data);
   free(LRUitem);
-  cachesize -= size; // 캐시에서 빠져나간 객체의 크기만큼 빼준다.
+  cachesize -= LRUitem->size; // 캐시에서 빠져나간 객체의 크기만큼 빼준다.
 }
 
 /*
 클라이언트가 요청한 객체가 캐시에 있는지 확인하고 있다면 응답 데이터 반환, 요청 객체를 가장 최근 리스트로 변경
 */
-cachebuffer *find_cache(char *path)
+cachebuffer *find_cache(char *uri)
 {
   cachebuffer *currentitem = cachehead;
   while(currentitem != NULL)
   {
-    if(strcmp(currentitem->path, path) == 0)
+    if(strcmp(currentitem->path, uri) == 0)
     {
       if(currentitem->prev != NULL) // 해당 객체가 최근 객체가 아니라면, 최근 리스트로 변경
       {
-        printf("같은 객체 찾음\n");
+        printf("같은 객체 하지만 처음은 아닌 찾음\n");
         currentitem->prev->next = currentitem->next;
         if(currentitem->next != NULL)
         {
@@ -134,7 +136,7 @@ cachebuffer *find_cache(char *path)
         cachehead->prev = currentitem;
         cachehead = currentitem;
       }
-      printf("첫번째 객체 찾음: %d\n", currentitem->data);
+      printf("같은 객체면서 첫번째 객체 찾음: %d\n", currentitem->data);
       return currentitem->data;
     }
     currentitem = currentitem->next;
@@ -145,16 +147,18 @@ cachebuffer *find_cache(char *path)
 /*
 웹 서버로부터 받은 객체를 캐시에 저장
 */
-void add_cache(char *server_buf, int object_size, char *from_server_uri, char *from_server_data)
+void add_cache(int object_size, char *from_server_uri, char *from_server_data)
 {
-  printf("cachesize: %d", cachesize);
+  printf("cachesize: %d\n", cachesize);
   if (cachesize >= MAX_CACHE_SIZE) {
     LRUbuffer();
   }
-  printf("add로 들어오는구나!!\n");
-  cachebuffer *newitem = (cachebuffer*)malloc(sizeof(cachebuffer));
+  printf("=========객체 캐시에 삽입\n");
+  cachebuffer *newitem = malloc(sizeof(cachebuffer));
   strcpy(newitem->path, from_server_uri);
   strcpy(newitem->data, from_server_data);
+  newitem->size = object_size;
+  printf("newitem->size: %d\n", newitem->size);
   newitem->prev = NULL;
   newitem->next = cachehead;
   if (cachehead != NULL) {
