@@ -2,7 +2,7 @@
 #include "csapp.h"
 
 /* Recommended max cache and object sizes */
-#define MAX_CACHE_SIZE 1049000
+#define MAX_CACHE_SIZE 500
 #define MAX_OBJECT_SIZE 102400
 
 /*
@@ -134,6 +134,7 @@ cachebuffer *find_cache(char *path)
         cachehead->prev = currentitem;
         cachehead = currentitem;
       }
+      printf("첫번째 객체 찾음\n");
       return currentitem->data;
     }
     currentitem = currentitem->next;
