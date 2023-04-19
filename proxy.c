@@ -13,7 +13,25 @@ void doit(int fd);
 int parse_uri(char *uri, char *host, char *port, char *path);
 void modify_HTTP_header(char *method, char *host, char *port, char *path, int server_fd);
 void *thread(void *vargp);
-void *cache(char *path);
+void LRUbuffer();
+void *find_cache(char *path);
+void *add_cache(char *server_buf, int object_size, char *from_server_uri, char *from_server_data);
+void parse_server(char *buf, char *from_server_uri, char *from_server_data);
+/*
+캐시 버퍼 구조체 생성
+*/
+typedef struct {
+    char path[MAXLINE]; // 웹 객체의 path
+    char data[MAX_OBJECT_SIZE]; // 웹 객체 데이터
+    struct cachebuffer* prev; // 이전 항목의 포인터
+    struct cachebuffer* next; // 다음 항목의 포인터
+    size_t size; // 웹 객체 크기
+}cachebuffer;
+
+cachebuffer *cachehead = NULL;
+int cachesize = 0;
+// cachebuffer *create_cache(size_t size);
+// cachebuffer cache[MAX_CACHE_SIZE];
 /*
 클라이언트와 통신 처리
 */
@@ -21,7 +39,8 @@ void doit(int fd) {
   int server_fd;
   char method[MAXLINE], uri[MAXLINE], version[MAXLINE], path[MAXLINE];
   char host[MAXLINE], port[MAXLINE];
-  char server_buf[MAXLINE], from_client_buf[MAXLINE];
+  char server_buf[MAXLINE], from_client_buf[MAXLINE], buf[MAXLINE];
+  char from_server_uri[MAXLINE], from_server_data[MAX_OBJECT_SIZE];
   rio_t client_rio, server_rio;
   
   Rio_readinitb(&client_rio, fd); // fd초기화, rio구조체와 연결
@@ -35,34 +54,95 @@ void doit(int fd) {
         return;
   } 
   parse_uri(uri, host, port, path); // 서버의 host, port, path 추출
-  // cache 함수에 들어가서 요청한 정보가 캐시에 있는지 확인한다.
-  server_fd = Open_clientfd(host, port); // proxy와 메인서버 소켓의 파일 디스크립터 생성
 
-  cache(path); // 캐시에 요청한 객체가 있는지 확인한다.
-
-  Rio_readinitb(&server_rio, server_fd);
-  modify_HTTP_header(method, host, port, path, server_fd); // 메인 서버로 보낼 헤더 생성 및 전송
-  ssize_t n;
-  while ((n = Rio_readlineb(&server_rio, server_buf, MAXLINE)) > 0) // 서버로부터 전송된 데이터 읽기
+  cachebuffer *buffer = find_cache(path); // 캐시에 요청한 객체가 있는지 확인한다.
+  if (buffer != NULL) // 캐시에 클라이언트가 요청한 객체가 있다면
   {
-      // 캐시 버퍼에 서버가 보낸 값을 쓴다.
-
-      Rio_writen(fd, server_buf, n); // 실제 읽은 바이트 수(데이터 길이)만큼만 쓰도록 수정
-      // 클라이언트로 다시 데이터 전송
+    Rio_writen(fd, buffer, len(buffer)); // 해당 객체를 클라이언트에 보낸다.
   }
-  Close(server_fd);
+  else // 캐시에 클라이언트가 찾는 객체가 없다면
+  {
+    server_fd = Open_clientfd(host, port); // proxy와 메인서버 소켓의 파일 디스크립터 생성
+    Rio_readinitb(&server_rio, server_fd); // 서버와 연결
+    modify_HTTP_header(method, host, port, path, server_fd); // 메인 서버로 보낼 헤더 생성 및 전송
+    ssize_t n;
+    while ((n = Rio_readlineb(&server_rio, server_buf, MAXLINE)) > 0) // 서버로부터 전송된 데이터 읽기
+    {
+      sprintf(buf, "%s", buf, server_buf); // buf에 서버로부터 응답을 담는다.    
+    }
+    parse_server(buf, from_server_uri, from_server_data); // 서버로부터 받은 uri, 데이터 파싱
+    add_cache(buf, len(buf), from_server_uri, from_server_data); // 버퍼, 버퍼 크기, uri, data
+    Rio_writen(fd, buf, len(buf)); // 실제 읽은 바이트 수(데이터 길이)만큼 데이터 클라이언트로 전송
+    Close(server_fd);
+  }
+}
+
+/*
+서버로부터 받은 응답 uri와 본문으로 파싱
+*/
+void parse_server(char *buf, char *from_server_uri, char *from_server_data)
+{
+  char *start_url = strstr(buf, "\r\n") + 4;
+  strncpy(from_server_uri, buf, start_url - buf);
+  from_server_data = start_url;
+}
+
+/*
+LUR방식으로 캐시에서 오래된 데이터 삭제
+*/
+void LRUbuffer()
+{
+  cachebuffer *LRUitem = cachehead; // 새로 생성한 LURitem노드는 NULL
+  while(LRUitem != NULL)
+  {
+    LRUitem->next->prev = NULL;
+    cachehead = LRUitem->next;
+  }
+  free(LRUitem);
+  cachesize--;
+}
+
+/*
+클라이언트가 요청한 객체가 캐시에 있는지 확인하고 있다면 요청에 응답
+*/
+void *find_cache(char *path)
+{
+  cachebuffer *currentitem = cachehead;
+  while(currentitem != NULL)
+  {
+    if(strcmp(currentitem->path, path) == 0)
+    {
+      if(currentitem->prev != NULL)
+      {
+        currentitem->prev->next = currentitem->next;
+      }
+      return currentitem->data;
+    }
+    currentitem = currentitem->next;
+  }
+  return NULL;
 }
 
 /*
 웹 서버로부터 받은 객체를 캐시에 저장
 */
-void *cache(char *path)
+void *add_cache(char *server_buf, int object_size, char *from_server_uri, char *from_server_data)
 {
-  /*
-  1. 캐시에 공간이 있고, 객체의 크기가 MAX를 넘지 않는다면 객체를 캐시에 탑재
-  2. 캐시에 공간(MAX_CACHE_SIZE)이 없다면, 캐시 폐기
-  3. 
-  */
+  if (cachesize >= MAX_CACHE_SIZE) {
+    LRUbuffer();
+  }
+
+  cachebuffer *newitem = (cachebuffer*)malloc(sizeof(cachebuffer));
+  newitem->path, from_server_uri;
+  newitem->data, from_server_data;
+  newitem->prev = NULL;
+  newitem->next = cachehead;
+
+  if (cachehead != NULL) {
+        cachehead->prev = newitem;
+  }
+  cachehead = newitem;
+  cachesize += object_size;
 }
 
 /*

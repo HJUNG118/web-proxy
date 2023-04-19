@@ -11,9 +11,9 @@
 void doit(int fd);
 void read_requesthdrs(rio_t *rp);
 int parse_uri(char *uri, char *filename, char *cgiargs);
-void serve_static(int fd, char *filename, int filesize);
+void serve_static(int fd, char *filename, int filesize, char *uri);
 void get_filetype(char *filename, char *filetype);
-void serve_dynamic(int fd, char *filename, char *cgiargs);
+void serve_dynamic(int fd, char *filename, char *cgiargs, char *uri);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg);
 
 /*
@@ -52,14 +52,14 @@ void doit(int fd) {
         clienterror(fd, filename, "403", "Forbidden", "Tiny couldn't read the file"); // 없다면 403에러 응답 생성
         return; 
     }
-    serve_static(fd, filename, sbuf.st_size);
+    serve_static(fd, filename, sbuf.st_size, uri);
   }
   else { 
       if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode)) {
           clienterror(fd, filename, "403", "Forbidden", "Tiny couldn't run the CGI program");
           return; 
       }
-      serve_dynamic(fd, filename, cgiargs); // 동적으로 CGI 프로그램 실행, 결과를 클라이언트에게 전송
+      serve_dynamic(fd, filename, cgiargs, uri); // 동적으로 CGI 프로그램 실행, 결과를 클라이언트에게 전송
   }
 }
 
@@ -109,13 +109,15 @@ int parse_uri(char *uri, char *filename, char *cgiargs) {
 /*
 정적인 파일을 클라이언트에게 전송하는 역할을 하는 함수
 */
-void serve_static(int fd, char *filename, int filesize) {
+void serve_static(int fd, char *filename, int filesize, char *uri) {
     int srcfd;
     char *srcp, filetype[MAXLINE], buf[MAXBUF], *usrbuf;
 
     /* Send response headers to client */
     get_filetype(filename, filetype); // 파일 타입 가져오기
-    sprintf(buf, "HTTP/1.0 200 OK\r\n"); // 응답해더를 생성해서 buf에 저장
+    sprintf(buf, "%s\r\n", uri+1);
+    sprintf(buf, "%sHTTP/1.0 200 OK\r\n", buf); // 응답해더를 생성해서 buf에 저장
+    // sprintf(buf, "filename: %s\r\n", filename);
     sprintf(buf, "%sServer: Tiny Web Server\r\n", buf);
     sprintf(buf, "%sConnection: close\r\n", buf);
     sprintf(buf, "%sContent-length: %d\r\n", buf, filesize);
@@ -130,7 +132,7 @@ void serve_static(int fd, char *filename, int filesize) {
     usrbuf = (char *)malloc(filesize);
     Rio_readn(srcfd, usrbuf, filesize); // srcfd: 데이터를 읽어올 fd, usrbuf: 읽어온 데이터 저장할 버퍼, 버퍼크기
     // srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
-    Close(srcfd);// 프록시 삽입
+    Close(srcfd);
     Rio_writen(fd, usrbuf, filesize); // scrp를 클라이언트에게 전송하여 파일의 내용을 응답 본문으로 전송
     // Munmap(srcp, filesize); // 매핑된 srcp를 해제
     free(usrbuf);
@@ -158,10 +160,11 @@ void get_filetype(char *filename, char *filetype) { // 파일 확장자를 검�
 클라이언트로부터 받은 요청에 따라 CGI 프로그램을 실행하고,
 그 결과를 클라이언트에게 전송하여 동적인 콘텐츠를 제공하는 기능 수행
 */
-void serve_dynamic(int fd, char *filename, char *cgiargs) {
+void serve_dynamic(int fd, char *filename, char *cgiargs, char *uri) {
     char buf[MAXLINE], *emptylist[] = { NULL };
     /* Return first part of HTTP response */
-    sprintf(buf, "HTTP/1.0 200 OK\r\n");
+    sprintf(buf, "%s\r\n", uri+1);
+    sprintf(buf, "%sHTTP/1.0 200 OK\r\n", buf);
     Rio_writen(fd, buf, strlen(buf)); // 파일 디스크립터 fd에 buf의 내용 전송
     sprintf(buf, "Server: Tiny Web Server\r\n");
     Rio_writen(fd, buf, strlen(buf));
