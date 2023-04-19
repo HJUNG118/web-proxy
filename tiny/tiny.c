@@ -115,7 +115,7 @@ void serve_static(int fd, char *filename, int filesize, char *uri) {
 
     /* Send response headers to client */
     get_filetype(filename, filetype); // 파일 타입 가져오기
-    sprintf(buf, "%s\r\n", uri);
+    sprintf(buf, "%s\r\n", filename+1);
     sprintf(buf, "%sHTTP/1.0 200 OK\r\n", buf); // 응답해더를 생성해서 buf에 저장
     // sprintf(buf, "filename: %s\r\n", filename);
     sprintf(buf, "%sServer: Tiny Web Server\r\n", buf);
@@ -163,7 +163,7 @@ void get_filetype(char *filename, char *filetype) { // 파일 확장자를 검�
 void serve_dynamic(int fd, char *filename, char *cgiargs, char *uri) {
     char buf[MAXLINE], *emptylist[] = { NULL };
     /* Return first part of HTTP response */
-    sprintf(buf, "%s\r\n", uri);
+    sprintf(buf, "%s\r\n", filename+1);
     sprintf(buf, "%sHTTP/1.0 200 OK\r\n", buf);
     Rio_writen(fd, buf, strlen(buf)); // 파일 디스크립터 fd에 buf의 내용 전송
     sprintf(buf, "Server: Tiny Web Server\r\n");
@@ -218,7 +218,6 @@ int main(int argc, char **argv) {
   while (1) {
     clientlen = sizeof(clientaddr);
     connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);  // 클라이언트와의 연결을 수락, 클라이언트의 주소 정보를 가져온다.
-    printf("%d", connfd);
     Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0); // 클라이언트 주소를 호스트 이름과 포트로 변환
     printf("Accepted connection from (%s, %s)\n", hostname, port);
     doit(connfd);   // 클라이언트와의 통신 처리

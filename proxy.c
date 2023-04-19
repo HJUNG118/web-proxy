@@ -55,11 +55,11 @@ void doit(int fd) {
   } 
   
   parse_uri(uri, host, port, path); // 서버의 host, port, path 추출
-  printf("path 잘 들어오나?: %s\n", path);
+
   cachebuffer *buffer = find_cache(path); // 캐시에 요청한 객체가 있는지 확인한다.
-  printf("%s\n", buffer);
   if (buffer != NULL) // 캐시에 클라이언트가 요청한 객체가 있다면
   {
+    // printf("여기는??\n");
     Rio_writen(fd, buffer, strlen(buffer)); // 해당 객체를 클라이언트에 보낸다.
   }
   else // 캐시에 클라이언트가 찾는 객체가 없다면
@@ -70,12 +70,17 @@ void doit(int fd) {
     ssize_t n;
     while ((n = Rio_readlineb(&server_rio, server_buf, MAXLINE)) > 0) // 서버로부터 전송된 데이터 읽기
     {
-      sprintf(buf, "%s", buf, server_buf); // buf에 서버로부터 응답을 담는다.    
+      Rio_writen(fd, server_buf, n); // 실제 읽은 바이트 수(데이터 길이)만큼 데이터 클라이언트로 전송
+      cachesize += n;
+      if(cachesize < MAX_OBJECT_SIZE)
+      {
+        strcat(buf, server_buf);
+      }    
     }
+    Close(server_fd);
+    // printf("buf: %s", strlen(buf));
     parse_server(buf, from_server_uri, from_server_data); // 서버로부터 받은 uri, 데이터 파싱
     add_cache(buf, strlen(buf), from_server_uri, from_server_data); // 버퍼, 버퍼 크기, uri, data
-    Rio_writen(fd, buf, strlen(buf)); // 실제 읽은 바이트 수(데이터 길이)만큼 데이터 클라이언트로 전송
-    Close(server_fd);
   }
 }
 
@@ -84,7 +89,7 @@ void doit(int fd) {
 */
 void parse_server(char *buf, char *from_server_uri, char *from_server_data)
 {
-  char *start_url = strstr(buf, "\r\n") + 4;
+  char *start_url = strstr(buf, "\r\n");
   strncpy(from_server_uri, buf, start_url - buf);
   from_server_data = start_url;
 }
@@ -94,11 +99,13 @@ LUR방식으로 캐시에서 제일 오래된 데이터(연결 리스트의 가�
 */
 void LRUbuffer()
 {
+  printf("===============LRU\n");
   cachebuffer *LRUitem = cachehead; // 새로 생성한 LRUitem노드는 NULL
   while(LRUitem != NULL)
   {
     LRUitem = LRUitem->next;
   }
+  LRUitem->prev->next = NULL;
   int size = sizeof(LRUitem->data);
   free(LRUitem);
   cachesize -= size; // 캐시에서 빠져나간 객체의 크기만큼 빼준다.
@@ -116,6 +123,7 @@ cachebuffer *find_cache(char *path)
     {
       if(currentitem->prev != NULL) // 해당 객체가 최근 객체가 아니라면, 최근 리스트로 변경
       {
+        printf("같은 객체 찾음\n");
         currentitem->prev->next = currentitem->next;
         if(currentitem->next != NULL)
         {
@@ -141,18 +149,18 @@ void add_cache(char *server_buf, int object_size, char *from_server_uri, char *f
   if (cachesize >= MAX_CACHE_SIZE) {
     LRUbuffer();
   }
-
+  printf("add로 들어오는구나!!\n");
   cachebuffer *newitem = (cachebuffer*)malloc(sizeof(cachebuffer));
   strcpy(newitem->path, from_server_uri);
   strcpy(newitem->data, from_server_data);
+  printf("path: %s\n", newitem->path);
   newitem->prev = NULL;
   newitem->next = cachehead;
-
   if (cachehead != NULL) {
     cachehead->prev = newitem;
   }
   cachehead = newitem;
-  cachesize += object_size;
+  // cachesize += object_size;
 }
 
 /*
