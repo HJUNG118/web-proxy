@@ -5,18 +5,6 @@
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
 
-/* You won't lose style points for including this long line in your code */
-static const char *user_agent_hdr =
-    "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 "
-    "Firefox/10.0.3\r\n";
-void doit(int fd);
-int parse_uri(char *uri, char *host, char *port, char *path);
-void modify_HTTP_header(char *method, char *host, char *port, char *path, int server_fd);
-void *thread(void *vargp);
-void LRUbuffer();
-void *find_cache(char *path);
-void *add_cache(char *server_buf, int object_size, char *from_server_uri, char *from_server_data);
-void parse_server(char *buf, char *from_server_uri, char *from_server_data);
 /*
 캐시 버퍼 구조체 생성
 */
@@ -29,9 +17,21 @@ typedef struct {
 }cachebuffer;
 
 cachebuffer *cachehead = NULL;
+
+/* You won't lose style points for including this long line in your code */
+static const char *user_agent_hdr =
+    "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 "
+    "Firefox/10.0.3\r\n";
+void doit(int fd);
+int parse_uri(char *uri, char *host, char *port, char *path);
+void modify_HTTP_header(char *method, char *host, char *port, char *path, int server_fd);
+void *thread(void *vargp);
+void LRUbuffer();
+void *find_cache(char *path);
+void add_cache(char *server_buf, int object_size, char *from_server_uri, char *from_server_data);
+void parse_server(char *buf, char *from_server_uri, char *from_server_data);
 int cachesize = 0;
-// cachebuffer *create_cache(size_t size);
-// cachebuffer cache[MAX_CACHE_SIZE];
+
 /*
 클라이언트와 통신 처리
 */
@@ -88,22 +88,22 @@ void parse_server(char *buf, char *from_server_uri, char *from_server_data)
 }
 
 /*
-LUR방식으로 캐시에서 오래된 데이터 삭제
+LUR방식으로 캐시에서 제일 오래된 데이터(연결 리스트의 가장 꼬리) 삭제
 */
 void LRUbuffer()
 {
-  cachebuffer *LRUitem = cachehead; // 새로 생성한 LURitem노드는 NULL
+  cachebuffer *LRUitem = cachehead; // 새로 생성한 LRUitem노드는 NULL
   while(LRUitem != NULL)
   {
-    LRUitem->next->prev = NULL;
-    cachehead = LRUitem->next;
+    LRUitem = LRUitem->next;
   }
+  int size = sizeof(LRUitem->data);
   free(LRUitem);
-  cachesize--;
+  cachesize -= size; // 캐시에서 빠져나간 객체의 크기만큼 빼준다.
 }
 
 /*
-클라이언트가 요청한 객체가 캐시에 있는지 확인하고 있다면 요청에 응답
+클라이언트가 요청한 객체가 캐시에 있는지 확인하고 있다면 응답 데이터 반환, 요청 객체를 가장 최근 리스트로 변경
 */
 void *find_cache(char *path)
 {
@@ -112,9 +112,17 @@ void *find_cache(char *path)
   {
     if(strcmp(currentitem->path, path) == 0)
     {
-      if(currentitem->prev != NULL)
+      if(currentitem->prev != NULL) // 해당 객체가 최근 객체가 아니라면, 최근 리스트로 변경
       {
         currentitem->prev->next = currentitem->next;
+        if(currentitem->next != NULL)
+        {
+          currentitem->next->prev = currentitem->prev;
+        }
+        currentitem->prev = NULL;
+        currentitem->next = cachehead;
+        cachehead->prev = currentitem;
+        cachehead = currentitem;
       }
       return currentitem->data;
     }
@@ -126,20 +134,20 @@ void *find_cache(char *path)
 /*
 웹 서버로부터 받은 객체를 캐시에 저장
 */
-void *add_cache(char *server_buf, int object_size, char *from_server_uri, char *from_server_data)
+void add_cache(char *server_buf, int object_size, char *from_server_uri, char *from_server_data)
 {
   if (cachesize >= MAX_CACHE_SIZE) {
     LRUbuffer();
   }
 
   cachebuffer *newitem = (cachebuffer*)malloc(sizeof(cachebuffer));
-  newitem->path, from_server_uri;
-  newitem->data, from_server_data;
+  strcpy(newitem->path, from_server_uri);
+  strcpy(newitem->data, from_server_data);
   newitem->prev = NULL;
   newitem->next = cachehead;
 
   if (cachehead != NULL) {
-        cachehead->prev = newitem;
+    cachehead->prev = newitem;
   }
   cachehead = newitem;
   cachesize += object_size;
